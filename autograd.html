@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Chapter 2 of LLM Under the Hood: turn derivatives and the chain rule into a working scalar autograd engine.">
+  <title>Autograd — LLM Under the Hood</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .chapter-status{display:inline-flex;gap:8px;align-items:center;margin-left:8px;color:var(--warn);font-size:.78rem}
+    .bridge{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;margin:22px 0}
+    .bridge>div{padding:18px;border:1px solid var(--line);border-radius:14px;background:#0d1425}
+    .bridge>span{align-self:center;color:var(--accent);font-size:1.5rem}
+    .graph{display:grid;grid-template-columns:repeat(7,minmax(60px,1fr));gap:8px;align-items:center;margin:20px 0;overflow:auto;padding-bottom:6px}
+    .graph-node{min-width:88px;padding:13px 10px;border:1px solid #35517d;border-radius:12px;background:#0d1628;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .graph-node strong{display:block;color:var(--accent-2);font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.82rem;margin-bottom:4px}
+    .graph-node .grad{display:block;color:var(--warn);font-size:.78rem;margin-top:5px}
+    .arrow{text-align:center;color:var(--accent);font-size:1.35rem}
+    .demo-inputs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+    .demo-inputs label{display:flex;flex-direction:column;gap:6px;color:var(--muted)}
+    .demo-inputs input{width:100%}
+    .code-explain{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
+    .code-explain>div{padding:15px;border:1px solid var(--line);border-radius:12px;background:#0d1425}
+    .code-explain b{color:var(--accent-2)}
+    .backward-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:.92rem}
+    .backward-table th,.backward-table td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}
+    .backward-table th{color:var(--muted);font-weight:600}
+    .done{border-color:#345f52!important;background:linear-gradient(180deg,rgba(142,227,198,.07),rgba(255,255,255,.018))!important}
+    .in-progress{border-color:#7a6335!important;background:linear-gradient(180deg,rgba(255,210,125,.07),rgba(255,255,255,.018))!important}
+    .chapter-nav{display:flex;justify-content:space-between;gap:12px;margin-top:24px}
+    .chapter-link{display:inline-flex;align-items:center;gap:8px;text-decoration:none;padding:11px 14px;border:1px solid #3d5180;background:#172340;border-radius:11px}
+    .chapter-link:hover{background:#1d2d52}
+    @media(max-width:850px){.bridge,.code-explain{grid-template-columns:1fr}.bridge>span{transform:rotate(90deg);text-align:center}.demo-inputs{grid-template-columns:1fr}.graph{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}}
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="index.html">LLM <span>Under the Hood</span></a>
+      <div class="navlinks">
+        <a href="index.html#math">Chapter 1</a>
+        <a href="#autograd">Chapter 2</a>
+        <a href="#engine">Mini engine</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <div class="eyebrow">02 — Autograd <span class="chapter-status">first pass</span></div>
+    <h1>Turn the chain rule into code.</h1>
+    <p class="lead">
+      Chapter 1 gave us derivatives, gradients, and the chain rule. Chapter 2 makes a machine perform those steps automatically.
+      We start with scalar values on purpose: the goal is to understand the mechanism before tensors hide it.
+    </p>
+
+    <div class="hero-grid">
+      <div class="card card-pad">
+        <div class="mini-title">The bridge</div>
+        <div class="bridge">
+          <div><b>Chapter 1 — Math</b><pre class="mini-code">a = x · y
+L = a + z
+
+dL/dx = dL/da · da/dx</pre></div>
+          <span>→</span>
+          <div><b>Chapter 2 — Autograd</b><pre class="mini-code">a = x * y
+L = a + z
+
+L.backward()</pre></div>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div class="mini-title">What autograd must remember</div>
+        <div class="terminal">
+          <div><span class="a">data</span> — forward value</div>
+          <div><span class="b">grad</span> — dL/d(value)</div>
+          <div><span class="dim">parents</span> — graph edges</div>
+          <div><span class="dim">_backward</span> — local derivative rule</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roadmap">
+    <div class="wrap">
+      <div class="section-head">
+        <div><span class="pill">Global view</span><h2>Where we are</h2></div>
+        <p>Chapter 2 is intentionally focused on the core mechanism. We will extend it later with more operations and then use it to build neural networks.</p>
+      </div>
+      <div class="roadmap">
+        <div class="step done"><div class="n">01 ✓</div><h3>Math Foundations</h3><p>Derivatives, gradients, chain rule, probabilities, softmax, cross-entropy.</p></div>
+        <div class="step active in-progress"><div class="n">02</div><h3>Autograd</h3><p>Computation graph, local derivatives, gradient accumulation, backward pass.</p></div>
+        <div class="step"><div class="n">03</div><h3>Neural Networks</h3><p>Use scalar autograd to build neurons, layers, and an MLP.</p></div>
+        <div class="step"><div class="n">04+</div><h3>From LM to modern LLMs</h3><p>Language modeling, tokenization, attention, GPT, and modern systems.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="autograd">
+    <div class="wrap">
+      <div class="section-head">
+        <div><span class="pill">02 — Autograd</span><h2>Automatic differentiation, from first principles</h2></div>
+        <p>Every section answers one question: what does <code>loss.backward()</code> actually have to do?</p>
+      </div>
+
+      <div class="math-grid">
+        <aside class="card toc">
+          <div class="mini-title">Contents</div>
+          <a href="#why">2.1 Why Autograd?</a>
+          <a href="#graph">2.2 Computation graph</a>
+          <a href="#local">2.3 Local derivatives</a>
+          <a href="#value">2.4 The Value object</a>
+          <a href="#accumulate">2.5 Gradient accumulation</a>
+          <a href="#topology">2.6 Reverse topological order</a>
+          <a href="#engine">2.7 Minimal engine</a>
+          <a href="#checkpoint2">2.8 Checkpoint</a>
+        </aside>
+
+        <div>
+          <article class="card lesson" id="why">
+            <h3>2.1 — Why Autograd exists</h3>
+            <p>In Chapter 1 we differentiated tiny expressions by hand. A neural network contains millions or billions of parameters and thousands of chained operations. Doing this manually is impossible.</p>
+
+            <div class="four-views">
+              <div><b>Forward pass</b><p>Compute actual numeric values from inputs and parameters until we obtain a loss.</p></div>
+              <div><b>Graph recording</b><p>Remember which values produced which later values.</p></div>
+              <div><b>Backward pass</b><p>Starting from the loss, apply each operation's local derivative rule in reverse.</p></div>
+              <div><b>Result</b><p>Every parameter receives <code>dL/dparameter</code>: its gradient.</p></div>
+            </div>
+
+            <div class="callout accent"><b>The connection to Chapter 1</b><p>Autograd is essentially the chain rule plus bookkeeping.</p></div>
+          </article>
+
+          <article class="card lesson" id="graph">
+            <h3>2.2 — A computation graph</h3>
+            <p>Consider a deliberately tiny program:</p>
+            <pre class="codeblock">a = x * y
+L = a + z</pre>
+            <p>The forward pass calculates values. The graph records how those values depend on one another.</p>
+
+            <div class="demo">
+              <b>Interactive forward + backward pass</b>
+              <div class="demo-inputs">
+                <label>x <input id="agX" type="number" value="2" step="0.5" oninput="updateAutogradDemo()"></label>
+                <label>y <input id="agY" type="number" value="3" step="0.5" oninput="updateAutogradDemo()"></label>
+                <label>z <input id="agZ" type="number" value="4" step="0.5" oninput="updateAutogradDemo()"></label>
+              </div>
+
+              <div class="graph">
+                <div class="graph-node"><strong>x</strong><span id="nodeX">2</span><span class="grad" id="gradX">grad = 3</span></div>
+                <div class="arrow">↘</div>
+                <div class="graph-node"><strong>a = x*y</strong><span id="nodeA">6</span><span class="grad" id="gradA">grad = 1</span></div>
+                <div class="arrow">→</div>
+                <div class="graph-node"><strong>L = a+z</strong><span id="nodeL">10</span><span class="grad">grad = 1</span></div>
+                <div class="arrow">←</div>
+                <div class="graph-node"><strong>z</strong><span id="nodeZ">4</span><span class="grad" id="gradZ">grad = 1</span></div>
+              </div>
+              <div class="result" id="autogradSummary">L = 10; dL/dx = 3; dL/dy = 2; dL/dz = 1</div>
+              <p class="muted">The graph drawing is simplified: <code>y</code> also feeds the multiplication node. Its gradient is shown in the summary.</p>
+            </div>
+
+            <table class="backward-table">
+              <thead><tr><th>Value</th><th>What it means</th><th>Gradient</th></tr></thead>
+              <tbody>
+                <tr><td><code>L</code></td><td>the final output with respect to itself</td><td><code>dL/dL = 1</code></td></tr>
+                <tr><td><code>a</code></td><td><code>L = a + z</code></td><td><code>dL/da = 1</code></td></tr>
+                <tr><td><code>x</code></td><td><code>a = x*y</code></td><td><code>dL/dx = 1*y</code></td></tr>
+                <tr><td><code>y</code></td><td><code>a = x*y</code></td><td><code>dL/dy = 1*x</code></td></tr>
+                <tr><td><code>z</code></td><td><code>L = a + z</code></td><td><code>dL/dz = 1</code></td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="card lesson" id="local">
+            <h3>2.3 — Local derivatives are enough</h3>
+            <p>An operation does not need to understand the entire neural network. It only needs to know its own derivative.</p>
+
+            <div class="reference-grid">
+              <div><b>Addition</b><br><code>c = a + b</code><br><code>∂c/∂a = 1</code><br><code>∂c/∂b = 1</code></div>
+              <div><b>Multiplication</b><br><code>c = a*b</code><br><code>∂c/∂a = b</code><br><code>∂c/∂b = a</code></div>
+              <div><b>Square</b><br><code>c = a²</code><br><code>∂c/∂a = 2a</code></div>
+              <div><b>Exponential</b><br><code>c = exp(a)</code><br><code>∂c/∂a = exp(a)</code></div>
+            </div>
+
+            <div class="callout accent"><b>Chain rule as message passing</b><p>Each node receives an upstream gradient, multiplies it by its local derivative, and sends the result to its parents.</p></div>
+
+            <div class="flow">
+              <div>upstream grad</div><span>×</span><div>local derivative</div><span>→</span><div>parent grad contribution</div>
+            </div>
+          </article>
+
+          <article class="card lesson" id="value">
+            <h3>2.4 — The <code>Value</code> object</h3>
+            <p>We now turn a plain number into a number that remembers enough information for automatic differentiation.</p>
+
+            <pre class="codeblock">class Value:
+    def __init__(self, data, children=(), op=""):
+        self.data = data
+        self.grad = 0.0
+        self._prev = set(children)
+        self._op = op
+        self._backward = lambda: None</pre>
+
+            <div class="code-explain">
+              <div><b><code>data</code></b><p>The ordinary numeric value computed during the forward pass.</p></div>
+              <div><b><code>grad</code></b><p>Eventually stores <code>dL/dthis_value</code>.</p></div>
+              <div><b><code>_prev</code></b><p>The values that were used to create this value: graph edges.</p></div>
+              <div><b><code>_backward</code></b><p>A tiny function containing this operation's local derivative rule.</p></div>
+            </div>
+
+            <p>Now addition can create both the output value and its backward rule:</p>
+            <pre class="codeblock">def __add__(self, other):
+    other = other if isinstance(other, Value) else Value(other)
+    out = Value(self.data + other.data, (self, other), "+")
+
+    def _backward():
+        self.grad  += 1.0 * out.grad
+        other.grad += 1.0 * out.grad
+
+    out._backward = _backward
+    return out</pre>
+
+            <div class="callout"><b>Forward and backward are paired.</b><p>The forward rule says how to compute <code>out.data</code>. The backward rule says how an upstream <code>out.grad</code> contributes to the parents.</p></div>
+          </article>
+
+          <article class="card lesson" id="accumulate">
+            <h3>2.5 — Why gradients must accumulate</h3>
+            <p>A value can influence the loss through more than one path. The total derivative is the sum of all path contributions. That is why backward rules use <code>+=</code>, not <code>=</code>.</p>
+
+            <div class="demo">
+              <b>Shared-value example: <code>y = x*x + x</code></b>
+              <div class="controls">
+                <label>x <input id="sharedX" type="number" value="3" step="0.5" oninput="updateSharedGradient()"></label>
+              </div>
+              <div class="result" id="sharedGradientResult">x = 3 → dy/dx = 3 + 3 + 1 = 7</div>
+            </div>
+
+            <pre class="codeblock"># Three paths from x to y:
+# x → left input of multiplication   contributes x
+# x → right input of multiplication  contributes x
+# x → direct addition                contributes 1
+
+x.grad += contribution_1
+x.grad += contribution_2
+x.grad += contribution_3</pre>
+
+            <div class="callout accent"><b>This is not an implementation detail.</b><p>Gradient accumulation is the multivariable chain rule applied to a graph with branches and merges.</p></div>
+          </article>
+
+          <article class="card lesson" id="topology">
+            <h3>2.6 — Why backward runs in reverse topological order</h3>
+            <p>A node can only send its correct gradient backward after it has received all gradient contributions from nodes that depend on it.</p>
+
+            <pre class="codeblock">forward order:
+x, y → a = x*y → L = a+z
+
+backward order:
+L → a → x, y
+  → z</pre>
+
+            <p>A topological sort gives an ordering in which every parent appears before the child that depends on it. We then traverse that ordering in reverse.</p>
+
+            <pre class="codeblock">topo = []
+visited = set()
+
+def build(node):
+    if node not in visited:
+        visited.add(node)
+        for parent in node._prev:
+            build(parent)
+        topo.append(node)
+
+build(loss)
+
+loss.grad = 1.0
+for node in reversed(topo):
+    node._backward()</pre>
+
+            <div class="callout"><b>Why start with <code>loss.grad = 1</code>?</b><p>Because <code>dL/dL = 1</code>. That single 1 is the seed from which the entire backward pass grows.</p></div>
+          </article>
+
+          <article class="card lesson" id="engine">
+            <h3>2.7 — A minimal scalar Autograd engine</h3>
+            <p>Put the pieces together and the core engine is surprisingly small. This is the conceptual ancestor of what PyTorch Autograd does at much larger scale.</p>
+
+            <pre class="codeblock">class Value:
+    def __init__(self, data, children=(), op=""):
+        self.data = float(data)
+        self.grad = 0.0
+        self._prev = set(children)
+        self._op = op
+        self._backward = lambda: None
+
+    def __add__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data + other.data, (self, other), "+")
+
+        def _backward():
+            self.grad += out.grad
+            other.grad += out.grad
+
+        out._backward = _backward
+        return out
+
+    def __mul__(self, other):
+        other = other if isinstance(other, Value) else Value(other)
+        out = Value(self.data * other.data, (self, other), "*")
+
+        def _backward():
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
+
+        out._backward = _backward
+        return out
+
+    def backward(self):
+        topo = []
+        visited = set()
+
+        def build(node):
+            if node not in visited:
+                visited.add(node)
+                for parent in node._prev:
+                    build(parent)
+                topo.append(node)
+
+        build(self)
+        self.grad = 1.0
+
+        for node in reversed(topo):
+            node._backward()</pre>
+
+            <pre class="codeblock">x = Value(2)
+y = Value(3)
+z = Value(4)
+
+a = x * y
+loss = a + z
+loss.backward()
+
+print(loss.data) # 10
+print(x.grad)    # 3
+print(y.grad)    # 2
+print(z.grad)    # 1</pre>
+
+            <div class="four-views">
+              <div><b>Math</b><p>The chain rule computes total derivatives.</p></div>
+              <div><b>Graph</b><p><code>_prev</code> records dependencies created during forward execution.</p></div>
+              <div><b>Local rules</b><p>Each operation owns only its own derivative.</p></div>
+              <div><b>Backward</b><p>Reverse topological traversal composes those local rules into global gradients.</p></div>
+            </div>
+          </article>
+
+          <article class="card lesson checkpoint" id="checkpoint2">
+            <span class="pill">Core bridge complete</span>
+            <h3>2.8 — What you should see now</h3>
+            <p>The point of this first version of Chapter 2 is not yet to implement every operation. It is to make the relationship between Chapter 1 and Autograd explicit.</p>
+
+            <div class="training-pipeline">
+              <div><small>Math</small><b>Derivative</b><span>local sensitivity</span></div>
+              <i>→</i>
+              <div><small>Math</small><b>Chain rule</b><span>compose sensitivities</span></div>
+              <i>→</i>
+              <div><small>Code</small><b>Computation graph</b><span>remember dependencies</span></div>
+              <i>→</i>
+              <div><small>Code</small><b>_backward()</b><span>local derivative rule</span></div>
+              <i>→</i>
+              <div><small>Result</small><b>Gradients</b><span>dL/dparameter</span></div>
+            </div>
+
+            <div class="callout accent"><b><code>loss.backward()</code> demystified</b><p>It seeds <code>dL/dL = 1</code>, walks the computation graph backward, applies local derivatives, and accumulates gradient contributions into every upstream value.</p></div>
+
+            <h4>Intentionally left for the next expansion</h4>
+            <p>We still need more operators such as powers, <code>exp</code>, nonlinearities such as <code>tanh</code>/<code>ReLU</code>, numerical gradient checks, and comparison with PyTorch. None of those changes the core mechanism shown here.</p>
+
+            <div class="next-chapter">
+              <div>
+                <span class="mini-title">Preview</span>
+                <h4>Chapter 3 — Neural Networks</h4>
+                <p>Once <code>Value</code> can differentiate expressions, a neuron is mostly a weighted sum plus a nonlinearity. A layer is a collection of neurons; an MLP is a stack of layers.</p>
+              </div>
+              <div class="terminal small-terminal">
+                <div>neuron(x)</div>
+                <div>= activation(w·x + b)</div>
+                <br>
+                <div class="b">loss.backward()</div>
+              </div>
+            </div>
+
+            <div class="chapter-nav">
+              <a class="chapter-link" href="index.html#checkpoint">← Chapter 1</a>
+              <span class="chapter-link" aria-disabled="true">Chapter 3 coming later →</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap">LLM Under the Hood — Understanding LLMs from Scratch.</div></footer>
+<script src="js/autograd.js"></script>
+</body>
+</html>
