@@ -106,7 +106,53 @@ function addAutogradLink() {
   textColumn.appendChild(link);
 }
 
+function enableRoadmapNavigation() {
+  const steps = document.querySelectorAll("#roadmap .step");
+  const implementedChapters = {
+    0: "#math",
+    1: "autograd.html"
+  };
+
+  Object.entries(implementedChapters).forEach(([index, target]) => {
+    const step = steps[Number(index)];
+    if (!step) {
+      return;
+    }
+
+    const chapterTitle = step.querySelector("h3")?.textContent || "chapter";
+    step.setAttribute("role", "link");
+    step.setAttribute("tabindex", "0");
+    step.setAttribute("aria-label", `Open ${chapterTitle}`);
+    step.title = `Open ${chapterTitle}`;
+    step.style.cursor = "pointer";
+    step.style.transition = "transform 160ms ease, border-color 160ms ease, background 160ms ease";
+
+    const navigate = () => {
+      window.location.href = target;
+    };
+
+    step.addEventListener("click", navigate);
+    step.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        navigate();
+      }
+    });
+
+    step.addEventListener("mouseenter", () => {
+      step.style.transform = "translateY(-3px)";
+      step.style.borderColor = "rgba(122,162,255,.85)";
+    });
+
+    step.addEventListener("mouseleave", () => {
+      step.style.transform = "";
+      step.style.borderColor = "";
+    });
+  });
+}
+
 updateDerivative();
 updateSoftmax();
 updateCrossEntropy();
 addAutogradLink();
+enableRoadmapNavigation();
