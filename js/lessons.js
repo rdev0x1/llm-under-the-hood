@@ -81,6 +81,32 @@ function checkCheckpoint() {
     "Expected: [7,20] ; [16,100,512] ; 6 ; 24 ; 1 ; yes ; 0.9 ; chain rule.";
 }
 
+function addAutogradLink() {
+  const nextChapter = document.querySelector(".next-chapter");
+  if (!nextChapter) {
+    return;
+  }
+
+  const textColumn = nextChapter.querySelector("div");
+  if (!textColumn || textColumn.querySelector(".chapter-link")) {
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.className = "chapter-link";
+  link.href = "autograd.html";
+  link.textContent = "Open Chapter 2 — Autograd →";
+  link.style.display = "inline-flex";
+  link.style.marginTop = "12px";
+  link.style.padding = "9px 12px";
+  link.style.border = "1px solid #3d5180";
+  link.style.borderRadius = "10px";
+  link.style.background = "#172340";
+  link.style.textDecoration = "none";
+  textColumn.appendChild(link);
+}
+
 updateDerivative();
 updateSoftmax();
 updateCrossEntropy();
+addAutogradLink();
