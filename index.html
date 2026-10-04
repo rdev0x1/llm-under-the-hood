@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="LLM Under the Hood — Understanding LLMs from Scratch.">
+  <meta name="description" content="LLM Under the Hood — Understanding LLMs from Scratch, from tensors and gradients to transformers.">
   <title>LLM Under the Hood — Understanding LLMs from Scratch</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,7 +15,7 @@
       <div class="navlinks">
         <a href="#roadmap">Roadmap</a>
         <a href="#math">Math</a>
-        <a href="#quiz">Exercises</a>
+        <a href="#checkpoint">Checkpoint</a>
       </div>
     </nav>
   </div>
@@ -40,13 +40,13 @@
         </div>
       </div>
       <div class="card card-pad">
-        <div class="mini-title">Eventually, this should feel obvious</div>
+        <div class="mini-title">By the end of Chapter 1</div>
         <div class="terminal">
-          <div><span class="dim">X</span>  : [B, T, C]</div>
-          <div><span class="a">Wq</span> : [C, D]</div>
+          <div><span class="dim">x</span> → linear layer → logits</div>
+          <div>→ softmax → loss</div>
           <br>
-          <div><span class="b">Q = X @ Wq</span></div>
-          <div>→ [B, T, D]</div>
+          <div><span class="b">loss.backward()</span></div>
+          <div>should no longer look magical.</div>
         </div>
       </div>
     </div>
@@ -59,11 +59,11 @@
           <span class="pill">Global view</span>
           <h2>The full path</h2>
         </div>
-        <p>The first version develops the math foundations only. The remaining stages show where the course is going.</p>
+        <p>Chapter 1 is now a complete mathematical launchpad for Autograd. Later mathematics is introduced just in time, where it becomes useful.</p>
       </div>
 
       <div class="roadmap">
-        <div class="step active"><div class="n">01</div><h3>Math Foundations</h3><p>Tensors, shapes, matrix operations, gradients, probability, softmax, cross-entropy.</p></div>
+        <div class="step active"><div class="n">01</div><h3>Math Foundations</h3><p>Tensors, matrix operations, derivatives, gradients, probability, softmax, cross-entropy.</p></div>
         <div class="step"><div class="n">02</div><h3>Autograd</h3><p>Build a computation graph and understand backward propagation.</p></div>
         <div class="step"><div class="n">03</div><h3>Neural Networks</h3><p>MLPs, activations, initialization, optimization.</p></div>
         <div class="step"><div class="n">04</div><h3>Language Models</h3><p>Next-token prediction and simple language models.</p></div>
@@ -80,65 +80,86 @@
       <div class="section-head">
         <div>
           <span class="pill">01 — Math Foundations</span>
-          <h2>The building blocks before the Transformer</h2>
+          <h2>The minimum math that makes LLM internals readable</h2>
         </div>
-        <p>We start low-level: arrays of numbers, dimensions, axes, and operations. Once these are intuitive, transformer code becomes much easier to read.</p>
+        <p>We learn only what we need now. More advanced mathematics will be introduced later inside attention, normalization, optimization, RoPE, and scaling.</p>
       </div>
 
       <div class="math-grid">
         <aside class="card toc">
           <div class="mini-title">Contents</div>
-          <a href="#tensor">1.1 Tensor & shape</a>
-          <a href="#matmul">1.2 The @ operator</a>
-          <a href="#axes">1.3 Axes & sum(axis)</a>
+          <a href="#tensor">1.1 Tensors & shapes</a>
+          <a href="#matmul">1.2 Matrix multiplication</a>
+          <a href="#axes">1.3 Axes & reductions</a>
           <a href="#broadcast">1.4 Broadcasting</a>
-          <a href="#llm-link">1.5 Connection to LLMs</a>
+          <a href="#linear">1.5 Linear transformations</a>
+          <a href="#derivatives">1.6 Functions & derivatives</a>
+          <a href="#gradients">1.7 Partial derivatives & gradients</a>
+          <a href="#chain-rule">1.8 The chain rule</a>
+          <a href="#probability">1.9 Probability distributions</a>
+          <a href="#softmax">1.10 Logits, exp, log & softmax</a>
+          <a href="#cross-entropy">1.11 Cross-entropy loss</a>
+          <a href="#checkpoint">1.12 Final checkpoint</a>
         </aside>
 
         <div>
           <article class="card lesson" id="tensor">
-            <h3>1.1 — Tensor & shape</h3>
-            <p>A tensor is simply an array of numbers with any number of dimensions. A <em>shape</em> tells us how many elements exist along each axis.</p>
+            <h3>1.1 — Tensors & shapes</h3>
+            <p>A tensor is an array of numbers with any number of dimensions. Its <em>shape</em> tells us how many elements exist along each axis.</p>
+
             <div class="concept-row">
               <div class="concept"><b>Scalar</b><code>5</code><br><span class="mini-title">shape []</span></div>
               <div class="concept"><b>Vector</b><code>[2, 5, 7]</code><br><span class="mini-title">shape [3]</span></div>
               <div class="concept"><b>Matrix</b><code>2 × 3</code><br><span class="mini-title">shape [2,3]</span></div>
               <div class="concept"><b>3D tensor</b><code>32 × 128 × 768</code><br><span class="mini-title">shape [32,128,768]</span></div>
             </div>
-            <div class="demo">
-              <b>LLM interpretation</b>
-              <pre class="codeblock">X.shape = [32, 128, 768]
 
-32  = sequences in the batch
-128 = tokens per sequence
-768 = numbers representing each token</pre>
+            <div class="four-views">
+              <div><b>Intuition</b><p>A shape is the address system of your data. In LLM code, understanding shapes is often more important than understanding the actual numbers.</p></div>
+              <div><b>Math</b><p><code>X ∈ R^(B×T×C)</code> means that X has three axes of sizes B, T, and C.</p></div>
+              <div><b>Code</b><pre class="mini-code">X.shape
+X.reshape(...)
+X.transpose(...)</pre></div>
+              <div><b>LLM connection</b><p><code>[B,T,C]</code> commonly means batch, token position, and embedding/channel dimension.</p></div>
+            </div>
+
+            <div class="demo">
+              <b>Common tensor operations</b>
+              <pre class="codeblock">X.shape = [2, 3]
+
+X * Y          # element-by-element multiplication
+X.T            # transpose a 2D matrix
+X.reshape(3,2) # same data, new shape
+X.mean(axis=0) # average along one axis</pre>
+            </div>
+
+            <div class="callout">
+              <b>Do not confuse <code>*</code> and <code>@</code>.</b>
+              <p><code>*</code> multiplies matching elements. <code>@</code> performs matrix multiplication.</p>
             </div>
           </article>
 
           <article class="card lesson" id="matmul">
-            <h3>1.2 — The <code>@</code> operator</h3>
-            <p>In Python, NumPy, and PyTorch, <code>@</code> means matrix multiplication. The core shape rule is <code>[M,K] @ [K,N] → [M,N]</code>.</p>
+            <h3>1.2 — Matrix multiplication: <code>@</code></h3>
+            <p>In Python, NumPy, and PyTorch, <code>@</code> means matrix multiplication. The shape rule to memorize is:</p>
+            <div class="equation">[M,K] @ [K,N] → [M,N]</div>
 
             <div class="demo">
               <div class="demo-grid">
                 <div>
                   <div class="mini-title center">A</div>
-                  <div class="matrix two">
-                    <div class="cell">1</div><div class="cell">2</div>
-                    <div class="cell">3</div><div class="cell">4</div>
-                  </div>
+                  <div class="matrix two"><div class="cell">1</div><div class="cell">2</div><div class="cell">3</div><div class="cell">4</div></div>
                 </div>
                 <div class="op">@</div>
                 <div>
                   <div class="mini-title center">B</div>
-                  <div class="matrix two">
-                    <div class="cell">5</div><div class="cell">6</div>
-                    <div class="cell">7</div><div class="cell">8</div>
-                  </div>
+                  <div class="matrix two"><div class="cell">5</div><div class="cell">6</div><div class="cell">7</div><div class="cell">8</div></div>
                 </div>
               </div>
               <div class="result">A @ B = [[19, 22], [43, 50]]</div>
             </div>
+
+            <p>Each output value is a dot product between one row of A and one column of B.</p>
 
             <div class="demo">
               <b>Shape playground</b>
@@ -152,33 +173,50 @@
               </div>
               <div class="result" id="matmulResult">[2,3] @ [3,4] → [2,4]</div>
             </div>
+
+            <div class="callout">
+              <b>Transformer preview</b>
+              <p>If <code>Q</code> and <code>K</code> both have token representations, then <code>Q @ Kᵀ</code> creates a token-by-token score matrix. This will become attention.</p>
+            </div>
           </article>
 
           <article class="card lesson" id="axes">
-            <h3>1.3 — Axes & <code>sum(axis)</code></h3>
-            <p>An axis is one dimension of a tensor. A reduction such as <code>sum(axis=1)</code> adds values along that axis and removes that dimension.</p>
+            <h3>1.3 — Axes & reductions</h3>
+            <p>An axis is one dimension of a tensor. A reduction combines values along an axis and usually removes that dimension.</p>
+
             <div class="axis-box">
               <div class="axis-item"><strong>Before</strong><br><code>[32,128,768]</code></div>
-              <div class="axis-item"><strong>sum(axis=1)</strong><br>sum across the 128 tokens</div>
+              <div class="axis-item"><strong>sum(axis=1)</strong><br>combine the 128 token positions</div>
               <div class="axis-item"><strong>After</strong><br><code>[32,768]</code></div>
             </div>
+
             <div class="demo">
               <pre class="codeblock">X =
 [[1, 2, 3],
  [4, 5, 6]]
 
-sum(axis=0) → [5, 7, 9]
-sum(axis=1) → [6, 15]</pre>
+X.sum(axis=0)  → [5, 7, 9]
+X.sum(axis=1)  → [6, 15]
+X.mean(axis=0) → [2.5, 3.5, 4.5]</pre>
+            </div>
+
+            <div class="callout">
+              <b>Best mental model</b>
+              <p><code>sum(axis=n)</code> means: “collapse axis n by summing over it.” This remains correct for 2D, 3D, 4D, and beyond.</p>
             </div>
           </article>
 
           <article class="card lesson" id="broadcast">
             <h3>1.4 — Broadcasting</h3>
-            <p>Broadcasting lets a smaller tensor participate in an operation with a larger tensor when their shapes are compatible. Shapes are aligned from the right; a dimension of size <code>1</code> can be expanded implicitly.</p>
+            <p>Broadcasting lets a smaller tensor participate in an elementwise operation with a larger tensor when their shapes are compatible.</p>
+
             <pre class="codeblock">X : [32, 128, 768]
 b :           [768]
 
 X + b → [32, 128, 768]</pre>
+
+            <p>Shapes are compared from the right. Dimensions are compatible when they are equal, or when one of them is <code>1</code>.</p>
+
             <div class="demo">
               <b>Concrete example</b>
               <pre class="codeblock">X =
@@ -191,31 +229,273 @@ X + b =
 [[11, 22, 33],
  [14, 25, 36]]</pre>
             </div>
+
+            <div class="callout">
+              <b>Why it matters</b>
+              <p>A bias vector such as <code>b[D]</code> can be added to every token in every sequence without manually copying it to <code>[B,T,D]</code>.</p>
+            </div>
           </article>
 
-          <article class="card lesson" id="llm-link">
-            <h3>1.5 — Why this appears everywhere in an LLM</h3>
-            <p>A linear layer transforms every token representation with the same weight matrix. This pattern appears constantly inside a transformer.</p>
+          <article class="card lesson" id="linear">
+            <h3>1.5 — Linear transformations: the workhorse operation</h3>
+            <p>A neural network constantly transforms vectors using a weight matrix and often a bias:</p>
+            <div class="equation">y = xW + b</div>
+
+            <div class="four-views">
+              <div><b>Intuition</b><p>The weights mix and re-express the input features into a new representation.</p></div>
+              <div><b>Math</b><p>If <code>x:[C]</code> and <code>W:[C,D]</code>, then <code>y:[D]</code>.</p></div>
+              <div><b>Code</b><pre class="mini-code">y = x @ W + b</pre></div>
+              <div><b>LLM connection</b><p>Attention projections Q/K/V and MLP layers are built from linear transformations.</p></div>
+            </div>
+
             <pre class="codeblock">X.shape = [B, T, C]
 W.shape = [C, D]
 b.shape = [D]
 
 Y = X @ W + b
-
 Y.shape = [B, T, D]</pre>
-            <p>Later, the Q, K, and V projections used by attention are built from exactly this kind of operation.</p>
+
+            <div class="callout">
+              <b>Key idea</b>
+              <p>The same matrix W is applied to every token. Training means discovering useful values for W and b.</p>
+            </div>
           </article>
 
-          <article class="card quiz" id="quiz">
-            <h3>Mini-test</h3>
-            <label for="q1">1. What is the shape of <code>[7,12] @ [12,20]</code>?</label>
-            <input id="q1" placeholder="[?,?]">
-            <label for="q2">2. What is the shape of <code>[16,100,512] @ [512,2048]</code>?</label>
-            <input id="q2" placeholder="[?,?,?]">
-            <label for="q3">3. What is the result shape of <code>[16,100,512] + [512]</code>?</label>
-            <input id="q3" placeholder="[?,?,?]">
-            <div class="controls"><button type="button" onclick="checkQuiz()">Check answers</button></div>
+          <article class="card lesson" id="derivatives">
+            <h3>1.6 — Functions & derivatives</h3>
+            <p>A function maps an input to an output. A derivative tells us how sensitive the output is to a small change in the input.</p>
+
+            <div class="equation">f(x) = x² &nbsp;&nbsp;&nbsp; ⇒ &nbsp;&nbsp;&nbsp; f′(x) = 2x</div>
+
+            <div class="four-views">
+              <div><b>Intuition</b><p>The derivative is a local slope: “if x moves a little, how much does f(x) move?”</p></div>
+              <div><b>Math</b><p>At <code>x=3</code>, <code>f′(3)=6</code>. A tiny change <code>Δx</code> changes the output by about <code>6·Δx</code>.</p></div>
+              <div><b>Code</b><pre class="mini-code">x = 3
+slope = 2 * x</pre></div>
+              <div><b>LLM connection</b><p>Training needs the sensitivity of the loss to every parameter.</p></div>
+            </div>
+
+            <div class="demo">
+              <b>Derivative playground: f(x) = x²</b>
+              <div class="controls">
+                <label for="derivativeX">x</label>
+                <input id="derivativeX" type="range" min="-5" max="5" step="0.1" value="2" oninput="updateDerivative()">
+              </div>
+              <div class="result" id="derivativeResult">x = 2.0 → f(x) = 4.00 → f′(x) = 4.00</div>
+            </div>
+
+            <div class="reference-grid">
+              <div><code>d(x²)/dx = 2x</code></div>
+              <div><code>d(x³)/dx = 3x²</code></div>
+              <div><code>d(eˣ)/dx = eˣ</code></div>
+              <div><code>d(log x)/dx = 1/x</code></div>
+            </div>
+          </article>
+
+          <article class="card lesson" id="gradients">
+            <h3>1.7 — Partial derivatives & gradients</h3>
+            <p>A neural network does not have one parameter. It has many. When a function depends on several variables, we differentiate with respect to one variable at a time.</p>
+
+            <div class="equation">L(w₁,w₂) = w₁² + 3w₂</div>
+            <pre class="codeblock">∂L/∂w₁ = 2w₁
+∂L/∂w₂ = 3
+
+gradient ∇L = [2w₁, 3]</pre>
+
+            <p>The gradient is a vector containing all these local sensitivities. For a model with millions or billions of trainable parameters, the idea is identical.</p>
+
+            <div class="callout accent">
+              <b>Gradient descent</b>
+              <div class="equation compact">θ ← θ − η∇L</div>
+              <p><code>θ</code> is the collection of model parameters, <code>η</code> is the learning rate, and <code>∇L</code> tells us how the loss changes.</p>
+            </div>
+
+            <div class="four-views">
+              <div><b>If gradient is positive</b><p>Increasing the parameter increases the loss locally, so gradient descent moves it downward.</p></div>
+              <div><b>If gradient is negative</b><p>Increasing the parameter decreases the loss locally, so gradient descent moves it upward.</p></div>
+              <div><b>If gradient ≈ 0</b><p>The loss is locally insensitive to that parameter.</p></div>
+              <div><b>LLM training</b><p>Repeat forward → loss → gradients → parameter update over many batches.</p></div>
+            </div>
+          </article>
+
+          <article class="card lesson" id="chain-rule">
+            <h3>1.8 — The chain rule: the core of backpropagation</h3>
+            <p>Neural networks are compositions of operations. The chain rule lets us propagate sensitivity backward through that composition.</p>
+
+            <pre class="codeblock">x = 2
+
+a = 3x       → a = 6
+b = a²       → b = 36
+L = b + 1    → L = 37</pre>
+
+            <p>Now work backward:</p>
+
+            <pre class="codeblock">∂L/∂b = 1
+∂b/∂a = 2a = 12
+∂a/∂x = 3
+
+∂L/∂x = (∂L/∂b)(∂b/∂a)(∂a/∂x)
+       = 1 × 12 × 3
+       = 36</pre>
+
+            <div class="flow">
+              <div>x</div><span>→</span><div>a=3x</div><span>→</span><div>b=a²</div><span>→</span><div>L=b+1</div>
+            </div>
+            <div class="flow backward">
+              <div>36</div><span>← ×3</span><div>12</div><span>← ×12</span><div>1</div><span>← ×1</span><div>1</div>
+            </div>
+
+            <div class="callout accent">
+              <b>This is backpropagation.</b>
+              <p>Autograd does not use a fundamentally different idea. It records operations during the forward pass and automatically applies local derivative rules in reverse.</p>
+            </div>
+          </article>
+
+          <article class="card lesson" id="probability">
+            <h3>1.9 — Probability distributions</h3>
+            <p>A language model does not directly output “the next word.” It assigns a score to every possible next token, then turns those scores into a probability distribution.</p>
+
+            <div class="token-probs">
+              <div><span>France</span><div class="bar"><i style="width:91%"></i></div><strong>0.91</strong></div>
+              <div><span>Paris</span><div class="bar"><i style="width:4%"></i></div><strong>0.04</strong></div>
+              <div><span>Europe</span><div class="bar"><i style="width:3%"></i></div><strong>0.03</strong></div>
+              <div><span>Other</span><div class="bar"><i style="width:2%"></i></div><strong>0.02</strong></div>
+            </div>
+
+            <div class="equation">pᵢ ≥ 0 &nbsp;&nbsp; and &nbsp;&nbsp; Σ pᵢ = 1</div>
+
+            <div class="four-views">
+              <div><b>Distribution</b><p>A list of possible outcomes and their probabilities.</p></div>
+              <div><b>Conditional probability</b><p>An LLM estimates <code>P(next token | previous tokens)</code>.</p></div>
+              <div><b>Sampling</b><p>Generation can choose a token according to this distribution instead of always selecting the largest value.</p></div>
+              <div><b>Training</b><p>The observed next token tells us which probability should have been high.</p></div>
+            </div>
+          </article>
+
+          <article class="card lesson" id="softmax">
+            <h3>1.10 — Logits, <code>exp</code>, <code>log</code> & softmax</h3>
+            <p>The raw outputs of the model are called <strong>logits</strong>. They can be any real numbers. Softmax converts them into probabilities.</p>
+
+            <div class="equation">softmax(zᵢ) = exp(zᵢ) / Σⱼ exp(zⱼ)</div>
+
+            <div class="demo">
+              <b>Softmax playground</b>
+              <p class="muted">Change the three logits. Notice that adding the same constant to all logits does not change the probabilities.</p>
+              <div class="controls">
+                <label>z₁ <input id="logit1" class="number-input" type="number" value="2" step="0.5" oninput="updateSoftmax()"></label>
+                <label>z₂ <input id="logit2" class="number-input" type="number" value="1" step="0.5" oninput="updateSoftmax()"></label>
+                <label>z₃ <input id="logit3" class="number-input" type="number" value="0" step="0.5" oninput="updateSoftmax()"></label>
+              </div>
+              <div class="result" id="softmaxResult">softmax([2, 1, 0]) ≈ [0.665, 0.245, 0.090]</div>
+            </div>
+
+            <div class="two-col">
+              <div class="callout">
+                <b>Why <code>exp</code>?</b>
+                <p>Exponentials are always positive and emphasize relative score differences.</p>
+              </div>
+              <div class="callout">
+                <b>Why <code>log</code> later?</b>
+                <p>Logs turn products into sums and strongly penalize assigning tiny probability to the correct token.</p>
+              </div>
+            </div>
+
+            <div class="callout accent">
+              <b>Numerical stability</b>
+              <p>Implementations usually compute <code>softmax(z − max(z))</code>. Subtracting the same constant does not change softmax but prevents huge exponentials from overflowing.</p>
+            </div>
+          </article>
+
+          <article class="card lesson" id="cross-entropy">
+            <h3>1.11 — Cross-entropy / negative log-likelihood</h3>
+            <p>If the correct next token has predicted probability <code>p</code>, the basic language-model loss for that token is:</p>
+
+            <div class="equation">loss = −log(p)</div>
+
+            <div class="demo">
+              <b>Loss playground</b>
+              <div class="controls">
+                <label for="correctProbability">Probability assigned to the correct token</label>
+                <input id="correctProbability" type="range" min="0.001" max="0.999" step="0.001" value="0.8" oninput="updateCrossEntropy()">
+              </div>
+              <div class="result" id="crossEntropyResult">p = 0.800 → loss = 0.223</div>
+            </div>
+
+            <div class="reference-grid">
+              <div><code>p=0.99 → loss≈0.010</code></div>
+              <div><code>p=0.80 → loss≈0.223</code></div>
+              <div><code>p=0.10 → loss≈2.303</code></div>
+              <div><code>p=0.01 → loss≈4.605</code></div>
+            </div>
+
+            <p>For a sequence, we average or sum this quantity over token positions:</p>
+            <div class="equation small">L = −(1/N) Σₜ log P(xₜ₊₁ | x₁…xₜ)</div>
+
+            <pre class="codeblock">"The cat sat on the mat"
+
+The       → predict "cat"
+The cat   → predict "sat"
+cat sat   → predict "on"
+sat on    → predict "the"
+on the    → predict "mat"</pre>
+
+            <div class="callout accent">
+              <b>The training objective in one sentence</b>
+              <p>Adjust the model parameters so that the probability of the token that actually came next becomes larger across the training data.</p>
+            </div>
+          </article>
+
+          <article class="card lesson checkpoint" id="checkpoint">
+            <span class="pill">Chapter 1 complete</span>
+            <h3>1.12 — Final checkpoint</h3>
+            <p>You are ready for Autograd when the complete path below makes conceptual sense:</p>
+
+            <div class="training-pipeline">
+              <div><small>1</small><b>Input tensors</b><span>[B,T,C]</span></div>
+              <i>→</i>
+              <div><small>2</small><b>Linear operations</b><span>X @ W + b</span></div>
+              <i>→</i>
+              <div><small>3</small><b>Logits</b><span>raw scores</span></div>
+              <i>→</i>
+              <div><small>4</small><b>Softmax</b><span>probabilities</span></div>
+              <i>→</i>
+              <div><small>5</small><b>Loss</b><span>−log p(correct)</span></div>
+            </div>
+            <div class="training-pipeline second">
+              <div><small>8</small><b>Better parameters</b><span>θ ← θ − η∇L</span></div>
+              <i>←</i>
+              <div><small>7</small><b>Gradients</b><span>∇L</span></div>
+              <i>←</i>
+              <div><small>6</small><b>Chain rule</b><span>backward</span></div>
+            </div>
+
+            <h4>Knowledge check</h4>
+            <div class="quiz-grid">
+              <label>1. <code>[7,12] @ [12,20]</code> → <input id="q1" placeholder="[?,?]"></label>
+              <label>2. <code>[16,100,512] + [512]</code> → <input id="q2" placeholder="[?,?,?]"></label>
+              <label>3. If <code>f(x)=x²</code>, then <code>f′(3)</code> = <input id="q3" placeholder="number"></label>
+              <label>4. If local derivatives are 2, 3, and 4, their chain-rule product is <input id="q4" placeholder="number"></label>
+              <label>5. Probabilities in a distribution sum to <input id="q5" placeholder="number"></label>
+              <label>6. Is <code>[32,128,768] + [768]</code> broadcastable? <input id="q6" placeholder="yes/no"></label>
+              <label>7. Which is better for the correct token: p=0.9 or p=0.1? <input id="q7" placeholder="0.9 or 0.1"></label>
+              <label>8. Backpropagation fundamentally relies on the <input id="q8" placeholder="... rule"></label>
+            </div>
+            <div class="controls"><button type="button" onclick="checkCheckpoint()">Check Chapter 1</button></div>
             <div id="feedback" class="feedback"></div>
+
+            <div class="next-chapter">
+              <div>
+                <span class="mini-title">Next</span>
+                <h4>Chapter 2 — Autograd</h4>
+                <p>We will turn the chain rule into code: values, computation graphs, local derivatives, topological order, and a working <code>backward()</code>.</p>
+              </div>
+              <div class="terminal small-terminal">
+                <div>y = a * b + c</div>
+                <div>loss = y ** 2</div>
+                <br>
+                <div class="b">loss.backward()</div>
+              </div>
+            </div>
           </article>
         </div>
       </div>
