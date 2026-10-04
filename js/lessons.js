@@ -6,24 +6,81 @@ function updateMatmul() {
     `[${m},${k}] @ [${k},${n}] → [${m},${n}]`;
 }
 
-function normalizeShape(value) {
-  return value.replace(/\s/g, "");
+function updateDerivative() {
+  const x = Number(document.getElementById("derivativeX").value);
+  const fx = x * x;
+  const derivative = 2 * x;
+  document.getElementById("derivativeResult").textContent =
+    `x = ${x.toFixed(1)} → f(x) = ${fx.toFixed(2)} → f′(x) = ${derivative.toFixed(2)}`;
 }
 
-function checkQuiz() {
-  const answers = [
-    normalizeShape(document.getElementById("q1").value),
-    normalizeShape(document.getElementById("q2").value),
-    normalizeShape(document.getElementById("q3").value)
-  ];
-  const expected = ["[7,20]", "[16,100,2048]", "[16,100,512]"];
-  const score = answers.reduce(
-    (total, answer, index) => total + (answer === expected[index] ? 1 : 0),
-    0
-  );
-  const feedback = document.getElementById("feedback");
-  feedback.className = score === 3 ? "feedback ok" : "feedback bad";
-  feedback.textContent =
-    score === 3 ? "3/3 — mastered." :
-    `${score}/3 — expected answers: ${expected.join(" ; ")}`;
+function stableSoftmax(values) {
+  const maxValue = Math.max(...values);
+  const exponentials = values.map((value) => Math.exp(value - maxValue));
+  const sum = exponentials.reduce((total, value) => total + value, 0);
+  return exponentials.map((value) => value / sum);
 }
+
+function updateSoftmax() {
+  const logits = [
+    Number(document.getElementById("logit1").value),
+    Number(document.getElementById("logit2").value),
+    Number(document.getElementById("logit3").value)
+  ];
+  const probabilities = stableSoftmax(logits);
+  document.getElementById("softmaxResult").textContent =
+    `softmax([${logits.join(", ")}]) ≈ [${probabilities.map((p) => p.toFixed(3)).join(", ")}]`;
+}
+
+function updateCrossEntropy() {
+  const probability = Number(document.getElementById("correctProbability").value);
+  const loss = -Math.log(probability);
+  document.getElementById("crossEntropyResult").textContent =
+    `p = ${probability.toFixed(3)} → loss = ${loss.toFixed(3)}`;
+}
+
+function normalize(value) {
+  return value.trim().toLowerCase().replace(/\s/g, "");
+}
+
+function checkCheckpoint() {
+  const answers = [
+    normalize(document.getElementById("q1").value),
+    normalize(document.getElementById("q2").value),
+    normalize(document.getElementById("q3").value),
+    normalize(document.getElementById("q4").value),
+    normalize(document.getElementById("q5").value),
+    normalize(document.getElementById("q6").value),
+    normalize(document.getElementById("q7").value),
+    normalize(document.getElementById("q8").value)
+  ];
+
+  const checks = [
+    answers[0] === "[7,20]",
+    answers[1] === "[16,100,512]",
+    answers[2] === "6",
+    answers[3] === "24",
+    answers[4] === "1" || answers[4] === "1.0",
+    answers[5] === "yes" || answers[5] === "y",
+    answers[6] === "0.9" || answers[6] === ".9",
+    answers[7] === "chainrule" || answers[7] === "thechainrule"
+  ];
+
+  const score = checks.filter(Boolean).length;
+  const feedback = document.getElementById("feedback");
+
+  if (score === checks.length) {
+    feedback.className = "feedback ok";
+    feedback.textContent = "8/8 — Chapter 1 mastered. You are ready for Autograd.";
+    return;
+  }
+
+  feedback.className = "feedback bad";
+  feedback.textContent =
+    `${score}/8 — review the missed concepts before moving to Autograd. ` +
+    "Expected: [7,20] ; [16,100,512] ; 6 ; 24 ; 1 ; yes ; 0.9 ; chain rule.";
+}
+
+updateDerivative();
+updateSoftmax();
+updateCrossEntropy();
