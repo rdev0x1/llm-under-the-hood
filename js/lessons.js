@@ -151,6 +151,19 @@ function enableRoadmapNavigation() {
   });
 }
 
+function configureCourseNavigation() {
+  const nav = document.querySelector(".navlinks");
+  if (!nav) {
+    return;
+  }
+
+  nav.innerHTML = `
+    <a href="index.html#math" aria-current="page">1. Math</a>
+    <a href="autograd.html#autograd">2. Autograd</a>
+  `;
+}
+
+configureCourseNavigation();
 updateDerivative();
 updateSoftmax();
 updateCrossEntropy();
