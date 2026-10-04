@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="LLM Under the Hood — Understanding LLMs from Scratch.">
+  <title>LLM Under the Hood — Understanding LLMs from Scratch</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <nav>
+      <a class="brand" href="#">LLM <span>Under the Hood</span></a>
+      <div class="navlinks">
+        <a href="#roadmap">Roadmap</a>
+        <a href="#math">Math</a>
+        <a href="#quiz">Exercises</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <div class="eyebrow">Text-first • interactive • no video required</div>
+    <h1>Understanding LLMs from Scratch.</h1>
+    <p class="lead">
+      From scalars and tensors to transformers, training, reasoning, and modern AI systems.
+      No black boxes: every important operation is connected to intuition, math, code, and its role inside an LLM.
+    </p>
+
+    <div class="hero-grid">
+      <div class="card card-pad">
+        <div class="mini-title">Learning goal</div>
+        <div class="goal">
+          <div><strong>Understand</strong><span>Why each operation exists.</span></div>
+          <div><strong>Rebuild</strong><span>From autograd to a GPT-like model.</span></div>
+          <div><strong>Connect</strong><span>Equations to real implementation.</span></div>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div class="mini-title">Eventually, this should feel obvious</div>
+        <div class="terminal">
+          <div><span class="dim">X</span>  : [B, T, C]</div>
+          <div><span class="a">Wq</span> : [C, D]</div>
+          <br>
+          <div><span class="b">Q = X @ Wq</span></div>
+          <div>→ [B, T, D]</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roadmap">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <span class="pill">Global view</span>
+          <h2>The full path</h2>
+        </div>
+        <p>The first version develops the math foundations only. The remaining stages show where the course is going.</p>
+      </div>
+
+      <div class="roadmap">
+        <div class="step active"><div class="n">01</div><h3>Math Foundations</h3><p>Tensors, shapes, matrix operations, gradients, probability, softmax, cross-entropy.</p></div>
+        <div class="step"><div class="n">02</div><h3>Autograd</h3><p>Build a computation graph and understand backward propagation.</p></div>
+        <div class="step"><div class="n">03</div><h3>Neural Networks</h3><p>MLPs, activations, initialization, optimization.</p></div>
+        <div class="step"><div class="n">04</div><h3>Language Models</h3><p>Next-token prediction and simple language models.</p></div>
+        <div class="step"><div class="n">05</div><h3>Tokenization</h3><p>BPE, vocabularies, encoding and decoding.</p></div>
+        <div class="step"><div class="n">06</div><h3>Attention</h3><p>Q, K, V, causal masks, and multi-head attention.</p></div>
+        <div class="step"><div class="n">07</div><h3>Transformer / GPT</h3><p>Build and train a complete GPT-like model.</p></div>
+        <div class="step"><div class="n">08</div><h3>Modern LLM Systems</h3><p>RoPE, RMSNorm, SwiGLU, KV cache, scaling, post-training, reasoning.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="math">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <span class="pill">01 — Math Foundations</span>
+          <h2>The building blocks before the Transformer</h2>
+        </div>
+        <p>We start low-level: arrays of numbers, dimensions, axes, and operations. Once these are intuitive, transformer code becomes much easier to read.</p>
+      </div>
+
+      <div class="math-grid">
+        <aside class="card toc">
+          <div class="mini-title">Contents</div>
+          <a href="#tensor">1.1 Tensor & shape</a>
+          <a href="#matmul">1.2 The @ operator</a>
+          <a href="#axes">1.3 Axes & sum(axis)</a>
+          <a href="#broadcast">1.4 Broadcasting</a>
+          <a href="#llm-link">1.5 Connection to LLMs</a>
+        </aside>
+
+        <div>
+          <article class="card lesson" id="tensor">
+            <h3>1.1 — Tensor & shape</h3>
+            <p>A tensor is simply an array of numbers with any number of dimensions. A <em>shape</em> tells us how many elements exist along each axis.</p>
+            <div class="concept-row">
+              <div class="concept"><b>Scalar</b><code>5</code><br><span class="mini-title">shape []</span></div>
+              <div class="concept"><b>Vector</b><code>[2, 5, 7]</code><br><span class="mini-title">shape [3]</span></div>
+              <div class="concept"><b>Matrix</b><code>2 × 3</code><br><span class="mini-title">shape [2,3]</span></div>
+              <div class="concept"><b>3D tensor</b><code>32 × 128 × 768</code><br><span class="mini-title">shape [32,128,768]</span></div>
+            </div>
+            <div class="demo">
+              <b>LLM interpretation</b>
+              <pre class="codeblock">X.shape = [32, 128, 768]
+
+32  = sequences in the batch
+128 = tokens per sequence
+768 = numbers representing each token</pre>
+            </div>
+          </article>
+
+          <article class="card lesson" id="matmul">
+            <h3>1.2 — The <code>@</code> operator</h3>
+            <p>In Python, NumPy, and PyTorch, <code>@</code> means matrix multiplication. The core shape rule is <code>[M,K] @ [K,N] → [M,N]</code>.</p>
+
+            <div class="demo">
+              <div class="demo-grid">
+                <div>
+                  <div class="mini-title center">A</div>
+                  <div class="matrix two">
+                    <div class="cell">1</div><div class="cell">2</div>
+                    <div class="cell">3</div><div class="cell">4</div>
+                  </div>
+                </div>
+                <div class="op">@</div>
+                <div>
+                  <div class="mini-title center">B</div>
+                  <div class="matrix two">
+                    <div class="cell">5</div><div class="cell">6</div>
+                    <div class="cell">7</div><div class="cell">8</div>
+                  </div>
+                </div>
+              </div>
+              <div class="result">A @ B = [[19, 22], [43, 50]]</div>
+            </div>
+
+            <div class="demo">
+              <b>Shape playground</b>
+              <div class="controls">
+                <select id="m"><option>2</option><option>4</option><option>8</option></select>
+                <span>×</span>
+                <select id="k"><option>3</option><option>8</option><option>16</option></select>
+                <span>@</span>
+                <select id="n"><option>4</option><option>16</option><option>32</option></select>
+                <button type="button" onclick="updateMatmul()">Compute shape</button>
+              </div>
+              <div class="result" id="matmulResult">[2,3] @ [3,4] → [2,4]</div>
+            </div>
+          </article>
+
+          <article class="card lesson" id="axes">
+            <h3>1.3 — Axes & <code>sum(axis)</code></h3>
+            <p>An axis is one dimension of a tensor. A reduction such as <code>sum(axis=1)</code> adds values along that axis and removes that dimension.</p>
+            <div class="axis-box">
+              <div class="axis-item"><strong>Before</strong><br><code>[32,128,768]</code></div>
+              <div class="axis-item"><strong>sum(axis=1)</strong><br>sum across the 128 tokens</div>
+              <div class="axis-item"><strong>After</strong><br><code>[32,768]</code></div>
+            </div>
+            <div class="demo">
+              <pre class="codeblock">X =
+[[1, 2, 3],
+ [4, 5, 6]]
+
+sum(axis=0) → [5, 7, 9]
+sum(axis=1) → [6, 15]</pre>
+            </div>
+          </article>
+
+          <article class="card lesson" id="broadcast">
+            <h3>1.4 — Broadcasting</h3>
+            <p>Broadcasting lets a smaller tensor participate in an operation with a larger tensor when their shapes are compatible. Shapes are aligned from the right; a dimension of size <code>1</code> can be expanded implicitly.</p>
+            <pre class="codeblock">X : [32, 128, 768]
+b :           [768]
+
+X + b → [32, 128, 768]</pre>
+            <div class="demo">
+              <b>Concrete example</b>
+              <pre class="codeblock">X =
+[[1, 2, 3],
+ [4, 5, 6]]
+
+b = [10, 20, 30]
+
+X + b =
+[[11, 22, 33],
+ [14, 25, 36]]</pre>
+            </div>
+          </article>
+
+          <article class="card lesson" id="llm-link">
+            <h3>1.5 — Why this appears everywhere in an LLM</h3>
+            <p>A linear layer transforms every token representation with the same weight matrix. This pattern appears constantly inside a transformer.</p>
+            <pre class="codeblock">X.shape = [B, T, C]
+W.shape = [C, D]
+b.shape = [D]
+
+Y = X @ W + b
+
+Y.shape = [B, T, D]</pre>
+            <p>Later, the Q, K, and V projections used by attention are built from exactly this kind of operation.</p>
+          </article>
+
+          <article class="card quiz" id="quiz">
+            <h3>Mini-test</h3>
+            <label for="q1">1. What is the shape of <code>[7,12] @ [12,20]</code>?</label>
+            <input id="q1" placeholder="[?,?]">
+            <label for="q2">2. What is the shape of <code>[16,100,512] @ [512,2048]</code>?</label>
+            <input id="q2" placeholder="[?,?,?]">
+            <label for="q3">3. What is the result shape of <code>[16,100,512] + [512]</code>?</label>
+            <input id="q3" placeholder="[?,?,?]">
+            <div class="controls"><button type="button" onclick="checkQuiz()">Check answers</button></div>
+            <div id="feedback" class="feedback"></div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap">LLM Under the Hood — Understanding LLMs from Scratch.</div></footer>
+<script src="js/lessons.js"></script>
+</body>
+</html>
